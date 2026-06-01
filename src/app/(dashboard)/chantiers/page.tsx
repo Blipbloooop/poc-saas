@@ -25,6 +25,7 @@ import {
   type Chantier,
   type ChantierStatut,
 } from "@/lib/mock-data";
+import CreateChantierModal from "@/components/shared/CreateChantierModal";
 import { formatCurrency, formatDate } from "@/lib/utils";
 
 // ─── Modal Détail Chantier ────────────────────────────────────────────────────
@@ -163,8 +164,14 @@ export default function ChantiersPage() {
   const [statutFilter, setStatutFilter] = useState<ChantierStatut | "tous">("tous");
   const [selectedChantier, setSelectedChantier] = useState<Chantier | null>(null);
   const [showFilters, setShowFilters] = useState(false);
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [chantiers, setChantiers] = useState<Chantier[]>(mockChantiers);
 
-  const filtered = mockChantiers.filter((c) => {
+  const handleChantierCreated = (chantier: Chantier) => {
+    setChantiers((prev) => [chantier, ...prev]);
+  };
+
+  const filtered = chantiers.filter((c) => {
     const matchSearch =
       search === "" ||
       c.client.toLowerCase().includes(search.toLowerCase()) ||
@@ -176,10 +183,10 @@ export default function ChantiersPage() {
   });
 
   const totaux = {
-    total: mockChantiers.length,
-    enCours: mockChantiers.filter((c) => c.statut === "en_cours").length,
-    retards: mockChantiers.filter((c) => c.retard).length,
-    montantTotal: mockChantiers.reduce((acc, c) => acc + c.montantHT, 0),
+    total: chantiers.length,
+    enCours: chantiers.filter((c) => c.statut === "en_cours").length,
+    retards: chantiers.filter((c) => c.retard).length,
+    montantTotal: chantiers.reduce((acc, c) => acc + c.montantHT, 0),
   };
 
   return (
@@ -190,7 +197,7 @@ export default function ChantiersPage() {
           <h1 className="text-xl font-bold text-slate-900">Chantiers</h1>
           <p className="text-sm text-slate-500 mt-0.5">{totaux.total} chantiers · {totaux.enCours} en cours</p>
         </div>
-        <Button variant="primary">
+        <Button variant="primary" onClick={() => setCreateModalOpen(true)}>
           <Plus className="w-4 h-4" />
           Créer un chantier
         </Button>
@@ -381,6 +388,14 @@ export default function ChantiersPage() {
         <ChantierDetailModal
           chantier={selectedChantier}
           onClose={() => setSelectedChantier(null)}
+        />
+      )}
+
+      {/* Modal création */}
+      {createModalOpen && (
+        <CreateChantierModal
+          onClose={() => setCreateModalOpen(false)}
+          onCreated={handleChantierCreated}
         />
       )}
     </div>
