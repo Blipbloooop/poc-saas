@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   HardHat,
@@ -13,6 +13,7 @@ import {
   LogOut,
 } from "lucide-react";
 import { useTheme } from "@/components/shared/ThemeProvider";
+import { authClient } from "@/lib/auth-client";
 import { cn } from "@/lib/utils";
 
 const navItems = [
@@ -21,9 +22,30 @@ const navItems = [
   { href: "/parametres", label: "Paramètres", icon: Settings },
 ];
 
+function getInitials(name: string): string {
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .map((n) => n[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
+}
+
 export default function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
   const { primaryColor, sidebarCompact, setSidebarCompact } = useTheme();
+  const { data: session } = authClient.useSession();
+
+  const userName = session?.user?.name ?? "Utilisateur";
+  const userEmail = session?.user?.email ?? "";
+  const initials = getInitials(userName);
+
+  const handleSignOut = async () => {
+    await authClient.signOut();
+    router.push("/signin");
+  };
 
   return (
     <aside
@@ -63,7 +85,7 @@ export default function Sidebar() {
               key={href}
               href={href}
               className={cn(
-                "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors group",
+                "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
                 isActive ? "text-white" : "text-slate-400 sidebar-item-hover hover:text-white"
               )}
               style={isActive ? { backgroundColor: primaryColor } : undefined}
@@ -87,15 +109,16 @@ export default function Sidebar() {
         >
           <Bell className="w-5 h-5 flex-shrink-0" />
           {!sidebarCompact && (
-            <span className="flex-1 text-left">Notifications</span>
-          )}
-          {!sidebarCompact && (
-            <span className="bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center flex-shrink-0">
-              5
-            </span>
+            <>
+              <span className="flex-1 text-left">Notifications</span>
+              <span className="bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center flex-shrink-0">
+                5
+              </span>
+            </>
           )}
         </button>
 
+        {/* Profil utilisateur */}
         <div
           className={cn(
             "flex items-center gap-3 px-3 py-2.5 rounded-lg",
@@ -103,25 +126,40 @@ export default function Sidebar() {
           )}
         >
           <div
-            className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold"
+            className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold text-white"
             style={{ backgroundColor: primaryColor }}
           >
-            GD
+            {initials}
           </div>
           {!sidebarCompact && (
-            <div className="flex-1 overflow-hidden">
-              <p className="text-xs font-medium text-white truncate">Guillaume Dubois</p>
-              <p className="text-xs truncate" style={{ color: "var(--secondary-border)" }}>
-                Gérant
-              </p>
-            </div>
-          )}
-          {!sidebarCompact && (
-            <button className="text-slate-400 hover:text-white">
-              <LogOut className="w-4 h-4" />
-            </button>
+            <>
+              <div className="flex-1 overflow-hidden min-w-0">
+                <p className="text-xs font-medium text-white truncate">{userName}</p>
+                <p className="text-xs truncate" style={{ color: "var(--secondary-border)" }}>
+                  {userEmail}
+                </p>
+              </div>
+              <button
+                onClick={handleSignOut}
+                className="text-slate-400 hover:text-white transition-colors flex-shrink-0"
+                title="Se déconnecter"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+            </>
           )}
         </div>
+
+        {/* Déconnexion en mode compact */}
+        {sidebarCompact && (
+          <button
+            onClick={handleSignOut}
+            className="w-full flex items-center justify-center px-3 py-2.5 rounded-lg text-slate-400 hover:text-white sidebar-item-hover transition-colors"
+            title="Se déconnecter"
+          >
+            <LogOut className="w-5 h-5" />
+          </button>
+        )}
       </div>
 
       {/* Bouton collapse */}
@@ -133,11 +171,7 @@ export default function Sidebar() {
           borderColor: "var(--secondary-border)",
         }}
       >
-        {sidebarCompact ? (
-          <ChevronRight className="w-3 h-3" />
-        ) : (
-          <ChevronLeft className="w-3 h-3" />
-        )}
+        {sidebarCompact ? <ChevronRight className="w-3 h-3" /> : <ChevronLeft className="w-3 h-3" />}
       </button>
     </aside>
   );

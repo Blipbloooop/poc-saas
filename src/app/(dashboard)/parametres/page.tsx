@@ -13,26 +13,35 @@ import {
   Upload,
   Plus,
   Trash2,
+  BookOpen,
+  UserCircle,
+  Loader2,
 } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Label } from "@/components/ui/Label";
 import { useTheme } from "@/components/shared/ThemeProvider";
-import { mockCollaborateurs } from "@/lib/mock-data";
+import { authClient } from "@/lib/auth-client";
+import { getUsers, type UserSummary } from "@/server/actions/users";
+import { getPrestations, createPrestation, updatePrestation, deletePrestation, type PrestationRow } from "@/server/actions/prestations";
 import { cn } from "@/lib/utils";
 
 type SettingsTab =
+  | "profil"
   | "general"
   | "theme"
   | "collaborateurs"
-  | "devis"
+  | "prestations"
   | "notifications"
   | "abonnement";
 
 const SIDEBAR_ITEMS = [
+  { id: "profil" as const, label: "Mon profil", icon: UserCircle },
   { id: "general" as const, label: "Général", icon: Building2 },
   { id: "theme" as const, label: "Thème & apparence", icon: Palette },
   { id: "collaborateurs" as const, label: "Comptes & accès", icon: Users },
-  { id: "devis" as const, label: "Pré-config devis", icon: FileText },
+  { id: "prestations" as const, label: "Catalogue prestations", icon: BookOpen },
   { id: "notifications" as const, label: "Notifications", icon: Bell },
   { id: "abonnement" as const, label: "Abonnement", icon: CreditCard },
 ];
@@ -56,6 +65,127 @@ const COLORS_SECONDARY_PRESET = [
 ];
 
 // ─── Sections de paramètres ───────────────────────────────────────────────────
+
+function ProfilSettings() {
+  const { data: session, refetch } = authClient.useSession();
+  const { primaryColor } = useTheme();
+
+  const [name, setName] = useState(session?.user?.name ?? "");
+  const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState<"idle" | "success" | "error">("idle");
+  const [errorMsg, setErrorMsg] = useState("");
+
+  // Sync quand la session charge
+  useEffect(() => {
+    if (session?.user?.name) setName(session.user.name);
+  }, [session?.user?.name]);
+
+  const initials = name
+    .split(" ")
+    .filter(Boolean)
+    .map((n) => n[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2) || "?";
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+    setLoading(true);
+    setStatus("idle");
+
+    const { error } = await authClient.updateUser({ name: name.trim() });
+
+    if (error) {
+      setStatus("error");
+      setErrorMsg(error.message ?? "Une erreur est survenue");
+    } else {
+      setStatus("success");
+      await refetch();
+    }
+    setLoading(false);
+    setTimeout(() => setStatus("idle"), 3000);
+  };
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-lg font-bold text-slate-900 mb-1">Mon profil</h2>
+        <p className="text-sm text-slate-500">Gérez vos informations personnelles</p>
+      </div>
+
+      <Card>
+        <CardContent className="p-6 space-y-6">
+          {/* Avatar */}
+          <div className="flex items-center gap-4">
+            <div
+              className="w-16 h-16 rounded-full flex items-center justify-center text-xl font-bold text-white flex-shrink-0"
+              style={{ backgroundColor: primaryColor }}
+            >
+              {initials}
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-slate-800">{name || "—"}</p>
+              <p className="text-xs text-slate-500 mt-0.5">{session?.user?.email}</p>
+            </div>
+          </div>
+
+          <form onSubmit={handleSave} className="space-y-4">
+            {status === "success" && (
+              <div className="rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2 text-sm text-emerald-700 flex items-center gap-2">
+                <Check className="w-4 h-4 flex-shrink-0" />
+                Profil mis à jour avec succès
+              </div>
+            )}
+            {status === "error" && (
+              <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">
+                {errorMsg}
+              </div>
+            )}
+
+            <div className="space-y-1.5">
+              <Label htmlFor="name">Nom complet</Label>
+              <Input
+                id="name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Prénom Nom"
+                required
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                type="email"
+                value={session?.user?.email ?? ""}
+                readOnly
+                className="bg-slate-50 cursor-not-allowed opacity-70"
+              />
+              <p className="text-xs text-slate-400">
+                La modification de l&apos;email sera disponible prochainement.
+              </p>
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <Button type="submit" variant="primary" size="sm" disabled={loading}>
+                {loading ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    Enregistrement...
+                  </>
+                ) : (
+                  "Sauvegarder"
+                )}
+              </Button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
 
 function GeneralSettings() {
   return (
@@ -467,98 +597,81 @@ function ThemeSettings() {
 }
 
 function CollaborateursSettings() {
+  const { primaryColor } = useTheme();
+  const [users, setUsers] = useState<UserSummary[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    getUsers().then(setUsers).finally(() => setLoading(false));
+  }, []);
+
+  const getInitials = (name: string) =>
+    name.split(" ").filter(Boolean).map((n) => n[0]).join("").toUpperCase().slice(0, 2);
+
+  const ROLE_LABELS: Record<string, string> = {
+    ADMIN: "Administrateur",
+    MEMBER: "Membre",
+    VIEWER: "Lecteur",
+  };
+
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-bold text-slate-900 mb-1">
-          Comptes & accès
-        </h2>
-        <p className="text-sm text-slate-500">
-          Gérez les autorisations par collaborateur
-        </p>
+        <h2 className="text-lg font-bold text-slate-900 mb-1">Comptes & accès</h2>
+        <p className="text-sm text-slate-500">Gérez les utilisateurs inscrits</p>
       </div>
 
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-slate-800">
-              Collaborateurs ({mockCollaborateurs.length})
-            </h3>
-            <Button variant="primary" size="sm">
-              <Plus className="w-3.5 h-3.5" />
-              Inviter
-            </Button>
-          </div>
+          <h3 className="text-sm font-semibold text-slate-800">
+            Utilisateurs {!loading && `(${users.length})`}
+          </h3>
         </CardHeader>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-slate-100 bg-slate-50">
-                {["Collaborateur", "Rôle", "Accès", "Statut", ""].map((h) => (
-                  <th
-                    key={h}
-                    className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide"
-                  >
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50">
-              {mockCollaborateurs.map((c) => (
-                <tr key={c.id} className="hover:bg-slate-50">
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-xs font-bold bg-(--primary)">
-                        {c.avatar}
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium text-slate-800">
-                          {c.prenom} {c.nom}
-                        </p>
-                        <p className="text-xs text-slate-500">{c.email}</p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className="text-sm text-slate-700">{c.role}</span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <select className="text-xs border border-slate-200 rounded-lg px-2 py-1 bg-white text-slate-700">
-                      <option>Lecture seule</option>
-                      <option>Utilisateur standard</option>
-                      <option>Utilisateur avancé</option>
-                      <option>Administrateur</option>
-                    </select>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${
-                        c.disponibilite === "conge"
-                          ? "bg-slate-100 text-slate-600"
-                          : "bg-green-100 text-green-700"
-                      }`}
-                    >
-                      <span
-                        className={`w-1.5 h-1.5 rounded-full ${
-                          c.disponibilite === "conge"
-                            ? "bg-slate-400"
-                            : "bg-green-500"
-                        }`}
-                      />
-                      {c.disponibilite === "conge" ? "Inactif" : "Actif"}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <button className="text-xs text-red-500 hover:text-red-700 hover:bg-red-50 px-2 py-1 rounded-lg transition-colors">
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </td>
+        {loading ? (
+          <div className="flex items-center justify-center py-8 text-slate-400">
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-current" />
+          </div>
+        ) : users.length === 0 ? (
+          <div className="text-center py-8 text-slate-400 text-sm">Aucun utilisateur</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-slate-100 bg-slate-50">
+                  {["Utilisateur", "Rôle", "Statut"].map((h) => (
+                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {users.map((u) => (
+                  <tr key={u.id} className="hover:bg-slate-50">
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-xs font-bold flex-shrink-0" style={{ backgroundColor: primaryColor }}>
+                          {getInitials(u.name)}
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-slate-800">{u.name}</p>
+                          <p className="text-xs text-slate-500">{u.email}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="text-sm text-slate-700">{ROLE_LABELS[u.role] ?? u.role}</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-green-100 text-green-700">
+                        <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                        Actif
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </Card>
     </div>
   );
@@ -688,6 +801,133 @@ function DevisSettings() {
           </div>
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+function PrestationsSettings() {
+  const { primaryColor } = useTheme();
+  const [rows, setRows] = useState<PrestationRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [form, setForm] = useState({ label: "", description: "", prix: "", unite: "forfait", tva: "20" });
+  const [saving, setSaving] = useState(false);
+  const UNITE_OPTIONS = ["forfait", "h", "j", "m²", "ml", "u", "m³", "kg"];
+
+  useEffect(() => {
+    getPrestations().then(setRows).finally(() => setLoading(false));
+  }, []);
+
+  const resetForm = () => setForm({ label: "", description: "", prix: "", unite: "forfait", tva: "20" });
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    const data = { label: form.label, description: form.description || undefined, prix: parseFloat(form.prix) || 0, unite: form.unite, tva: parseFloat(form.tva) || 20 };
+    if (editId) {
+      const r = await updatePrestation(editId, data);
+      if (r.success) { setRows((p) => p.map((x) => x.id === editId ? r.data : x)); setEditId(null); resetForm(); }
+    } else {
+      const r = await createPrestation(data);
+      if (r.success) { setRows((p) => [...p, r.data]); resetForm(); }
+    }
+    setSaving(false);
+  };
+
+  const handleEdit = (p: PrestationRow) => {
+    setEditId(p.id);
+    setForm({ label: p.label, description: p.description ?? "", prix: String(p.prix), unite: p.unite, tva: String(p.tva) });
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm("Supprimer cette prestation ?")) return;
+    await deletePrestation(id);
+    setRows((p) => p.filter((x) => x.id !== id));
+  };
+
+  const set = (k: keyof typeof form, v: string) => setForm((p) => ({ ...p, [k]: v }));
+  const inputCls = "w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-200 bg-white";
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-lg font-bold text-slate-900 mb-1">Catalogue de prestations</h2>
+        <p className="text-sm text-slate-500">Préenregistrez vos tarifs pour les utiliser dans vos devis</p>
+      </div>
+
+      {/* Formulaire */}
+      <Card>
+        <CardHeader><h3 className="text-sm font-semibold text-slate-800">{editId ? "Modifier la prestation" : "Nouvelle prestation"}</h3></CardHeader>
+        <CardContent className="p-5">
+          <form onSubmit={handleSave} className="space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="col-span-2">
+                <label className="text-xs font-medium text-slate-600 block mb-1">Désignation *</label>
+                <input required className={inputCls} value={form.label} onChange={(e) => set("label", e.target.value)} placeholder="Main d'œuvre plomberie (h)" />
+              </div>
+              <div className="col-span-2">
+                <label className="text-xs font-medium text-slate-600 block mb-1">Description (optionnel)</label>
+                <input className={inputCls} value={form.description} onChange={(e) => set("description", e.target.value)} placeholder="Détails…" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-600 block mb-1">Prix unitaire HT (€) *</label>
+                <input required type="number" min={0} step="0.01" className={inputCls} value={form.prix} onChange={(e) => set("prix", e.target.value)} placeholder="65" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-600 block mb-1">Unité</label>
+                <select className={inputCls} value={form.unite} onChange={(e) => set("unite", e.target.value)}>
+                  {UNITE_OPTIONS.map((u) => <option key={u}>{u}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-600 block mb-1">TVA (%)</label>
+                <select className={inputCls} value={form.tva} onChange={(e) => set("tva", e.target.value)}>
+                  {[0, 5.5, 10, 20].map((t) => <option key={t} value={t}>{t}%</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="flex gap-2 justify-end">
+              {editId && (
+                <button type="button" onClick={() => { setEditId(null); resetForm(); }} className="px-3 py-2 text-sm text-slate-500 hover:text-slate-700">Annuler</button>
+              )}
+              <Button type="submit" variant="primary" size="sm" disabled={saving}>
+                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : editId ? <Check className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+                {editId ? "Enregistrer" : "Ajouter"}
+              </Button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
+
+      {/* Liste */}
+      {loading ? (
+        <div className="flex items-center justify-center py-8 text-slate-400"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-current" /></div>
+      ) : rows.length === 0 ? (
+        <p className="text-center text-sm text-slate-400 py-6">Aucune prestation enregistrée</p>
+      ) : (
+        <Card>
+          <CardContent className="p-0">
+            {rows.map((p) => (
+              <div key={p.id} className="flex items-center gap-4 px-5 py-3.5 border-b border-slate-50 last:border-0">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-slate-900">{p.label}</p>
+                  {p.description && <p className="text-xs text-slate-400">{p.description}</p>}
+                </div>
+                <div className="text-right flex-shrink-0">
+                  <p className="text-sm font-semibold text-slate-900">{p.prix.toLocaleString("fr-FR", { style: "currency", currency: "EUR" })}</p>
+                  <p className="text-xs text-slate-400">/{p.unite} · TVA {p.tva}%</p>
+                </div>
+                <div className="flex gap-1 flex-shrink-0">
+                  <button onClick={() => handleEdit(p)} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors text-xs">✏️</button>
+                  <button onClick={() => handleDelete(p.id)} className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors">
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
@@ -863,14 +1103,15 @@ function AbonnementSettings() {
 // ─── Page principale ──────────────────────────────────────────────────────────
 
 export default function ParametresPage() {
-  const [activeTab, setActiveTab] = useState<SettingsTab>("general");
+  const [activeTab, setActiveTab] = useState<SettingsTab>("profil");
   const { primaryColor } = useTheme();
 
   const contentMap: Record<SettingsTab, React.ReactNode> = {
+    profil: <ProfilSettings />,
     general: <GeneralSettings />,
     theme: <ThemeSettings />,
+    prestations: <PrestationsSettings />,
     collaborateurs: <CollaborateursSettings />,
-    devis: <DevisSettings />,
     notifications: <NotificationsSettings />,
     abonnement: <AbonnementSettings />,
   };
