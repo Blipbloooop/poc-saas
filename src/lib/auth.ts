@@ -7,12 +7,15 @@ import { db } from "./db";
 if (!process.env.BETTER_AUTH_SECRET) {
   throw new Error("BETTER_AUTH_SECRET est requis dans les variables d'environnement");
 }
+if (!process.env.BETTER_AUTH_URL) {
+  throw new Error("BETTER_AUTH_URL est requis dans les variables d'environnement");
+}
 
 export const auth = betterAuth({
   database: prismaAdapter(db, {
     provider: "postgresql",
   }),
-  baseURL: process.env.BETTER_AUTH_URL || "http://localhost:3000",
+  baseURL: process.env.BETTER_AUTH_URL,
   secret: process.env.BETTER_AUTH_SECRET,
   emailAndPassword: {
     enabled: true,
