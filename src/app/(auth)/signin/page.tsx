@@ -2,6 +2,7 @@
 
 import { Suspense, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { Mail } from "lucide-react";
 import { useAuthentification } from "@/hooks/use-authentification";
 import { useSearchParams } from "next/navigation";
@@ -9,8 +10,6 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Label } from "@/components/ui/Label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
-
-const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME || "SaaS BTP";
 
 function SigninForm() {
   const { signin, loading, error, emailNotVerified, resendVerificationEmail, success } = useAuthentification();
@@ -26,8 +25,14 @@ function SigninForm() {
 
   return (
     <div className="flex flex-col items-center gap-6">
-      <div className="text-center">
-        <h1 className="text-2xl font-bold text-foreground">{APP_NAME}</h1>
+      <div className="text-center lg:hidden">
+        <Image
+          src="/brand/logo-lockup.png"
+          alt="NaviBat"
+          width={495}
+          height={350}
+          className="mx-auto h-12 w-auto"
+        />
       </div>
 
       <Card className="w-full">

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, Suspense } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { CheckCircle2 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -26,8 +27,14 @@ function EmailVerifiedContent() {
 
   return (
     <div className="flex flex-col items-center gap-6">
-      <div className="text-center">
-        <h1 className="text-2xl font-bold text-foreground">{process.env.NEXT_PUBLIC_APP_NAME || "SaaS BTP"}</h1>
+      <div className="text-center lg:hidden">
+        <Image
+          src="/brand/logo-lockup.png"
+          alt="NaviBat"
+          width={495}
+          height={350}
+          className="mx-auto h-12 w-auto"
+        />
       </div>
 
       <Card className="w-full">

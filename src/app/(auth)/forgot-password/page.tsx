@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Loader2, CheckCircle2 } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
@@ -118,8 +119,14 @@ export default function ForgotPasswordPage() {
 
   return (
     <div className="flex flex-col items-center gap-6">
-      <div className="text-center">
-        <h1 className="text-2xl font-bold text-foreground">{process.env.NEXT_PUBLIC_APP_NAME || "SaaS BTP"}</h1>
+      <div className="text-center lg:hidden">
+        <Image
+          src="/brand/logo-lockup.png"
+          alt="NaviBat"
+          width={495}
+          height={350}
+          className="mx-auto h-12 w-auto"
+        />
       </div>
 
       <Card className="w-full">
