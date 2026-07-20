@@ -1,71 +1,82 @@
 "use client";
 
-import {
-  createContext,
-  useContext,
-  useState,
-  useEffect,
-  type ReactNode,
-} from "react";
-
-const DEFAULT_PRIMARY = "#16a34a";
-const DEFAULT_SECONDARY = "#0f172a";
-const STORAGE_PRIMARY_KEY = "theme-color";
-const STORAGE_SECONDARY_KEY = "theme-secondary";
-const STORAGE_COMPACT_KEY = "theme-sidebar-compact";
+import { createContext, useContext, useState, useEffect, type ReactNode } from "react";
+import { updateOrganizationTheme } from "@/server/actions/theme";
+import { DEFAULT_THEME_PRIMARY, DEFAULT_THEME_SECONDARY } from "@/lib/constants/theme";
 
 interface ThemeContextType {
   primaryColor: string;
   secondaryColor: string;
-  sidebarCompact: boolean;
-  setSidebarCompact: (compact: boolean) => void;
-  applyTheme: (primary: string, secondary: string, compact: boolean) => void;
+  organizationLogo: string | null;
+  organizationName: string;
+  applyTheme: (primary: string, secondary: string) => void;
+  setOrganizationLogo: (url: string) => void;
+  setOrganizationName: (name: string) => void;
 }
 
 const ThemeContext = createContext<ThemeContextType>({
-  primaryColor: DEFAULT_PRIMARY,
-  secondaryColor: DEFAULT_SECONDARY,
-  sidebarCompact: false,
-  setSidebarCompact: () => {},
+  primaryColor: DEFAULT_THEME_PRIMARY,
+  secondaryColor: DEFAULT_THEME_SECONDARY,
+  organizationLogo: null,
+  organizationName: "",
   applyTheme: () => {},
+  setOrganizationLogo: () => {},
+  setOrganizationName: () => {},
 });
 
-export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [primaryColor, setPrimaryColor] = useState(DEFAULT_PRIMARY);
-  const [secondaryColor, setSecondaryColor] = useState(DEFAULT_SECONDARY);
-  const [sidebarCompact, setSidebarCompactState] = useState(false);
+interface ThemeProviderProps {
+  children: ReactNode;
+  initialPrimary?: string;
+  initialSecondary?: string;
+  initialLogo?: string | null;
+  initialName?: string;
+}
+
+// Le thème (couleurs), le logo et le nom viennent de l'organisation en base — voir
+// getOrganizationTheme / getMyCompanyProfile, appelés côté serveur dans
+// (dashboard)/layout.tsx et passés ici en props.
+export function ThemeProvider({
+  children,
+  initialPrimary = DEFAULT_THEME_PRIMARY,
+  initialSecondary = DEFAULT_THEME_SECONDARY,
+  initialLogo = null,
+  initialName = "",
+}: ThemeProviderProps) {
+  const [primaryColor, setPrimaryColor] = useState(initialPrimary);
+  const [secondaryColor, setSecondaryColor] = useState(initialSecondary);
+  const [organizationLogo, setOrganizationLogo] = useState(initialLogo);
+  const [organizationName, setOrganizationName] = useState(initialName);
 
   useEffect(() => {
-    const primary = localStorage.getItem(STORAGE_PRIMARY_KEY) ?? DEFAULT_PRIMARY;
-    const secondary = localStorage.getItem(STORAGE_SECONDARY_KEY) ?? DEFAULT_SECONDARY;
-    const compact = localStorage.getItem(STORAGE_COMPACT_KEY) === "true";
+    document.documentElement.style.setProperty("--primary", primaryColor);
+    document.documentElement.style.setProperty("--secondary", secondaryColor);
+
+    // Sans ce nettoyage, ces styles inline restent sur <html> après une
+    // navigation côté client vers une page hors du dashboard (ex: /signin
+    // après déconnexion), puisque <html> persiste entre les routes.
+    return () => {
+      document.documentElement.style.removeProperty("--primary");
+      document.documentElement.style.removeProperty("--secondary");
+    };
+  }, [primaryColor, secondaryColor]);
+
+  const applyTheme = (primary: string, secondary: string) => {
     setPrimaryColor(primary);
     setSecondaryColor(secondary);
-    setSidebarCompactState(compact);
-    document.documentElement.style.setProperty("--primary", primary);
-    document.documentElement.style.setProperty("--secondary", secondary);
-  }, []);
-
-  // Séparé de applyTheme pour que le bouton collapse de la sidebar persiste sans re-appliquer tout le thème
-  const setSidebarCompact = (compact: boolean) => {
-    setSidebarCompactState(compact);
-    localStorage.setItem(STORAGE_COMPACT_KEY, String(compact));
-  };
-
-  const applyTheme = (primary: string, secondary: string, compact: boolean) => {
-    setPrimaryColor(primary);
-    setSecondaryColor(secondary);
-    setSidebarCompactState(compact);
-    document.documentElement.style.setProperty("--primary", primary);
-    document.documentElement.style.setProperty("--secondary", secondary);
-    localStorage.setItem(STORAGE_PRIMARY_KEY, primary);
-    localStorage.setItem(STORAGE_SECONDARY_KEY, secondary);
-    localStorage.setItem(STORAGE_COMPACT_KEY, String(compact));
+    updateOrganizationTheme(primary, secondary).catch(() => {});
   };
 
   return (
     <ThemeContext.Provider
-      value={{ primaryColor, secondaryColor, sidebarCompact, setSidebarCompact, applyTheme }}
+      value={{
+        primaryColor,
+        secondaryColor,
+        organizationLogo,
+        organizationName,
+        applyTheme,
+        setOrganizationLogo,
+        setOrganizationName,
+      }}
     >
       {children}
     </ThemeContext.Provider>

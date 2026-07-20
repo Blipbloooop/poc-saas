@@ -6,11 +6,7 @@ import { useState } from "react";
 interface SigninData {
   email: string;
   password: string;
-}
-
-interface SignupData extends SigninData {
-  firstName: string;
-  lastName: string;
+  rememberMe?: boolean;
 }
 
 export function useAuthentification() {
@@ -19,30 +15,6 @@ export function useAuthentification() {
   const [success, setSuccess] = useState<string | null>(null);
   const [emailNotVerified, setEmailNotVerified] = useState<string | null>(null);
   const router = useRouter();
-
-  const signup = async (data: SignupData) => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      const { data: result, error: authError } = await authClient.signUp.email({
-        name: `${data.firstName} ${data.lastName}`.trim(),
-        email: data.email,
-        password: data.password,
-      });
-
-      if (authError) throw new Error(translateAuthError(authError.message));
-
-      // TODO: rediriger vers /confirm-email quand SMTP configuré
-      router.push("/dashboard");
-      return result;
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Une erreur est survenue");
-      throw err;
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const signin = async (data: SigninData, redirectTo = "/dashboard") => {
     setLoading(true);
@@ -53,17 +25,23 @@ export function useAuthentification() {
       const { data: result, error: authError } = await authClient.signIn.email({
         email: data.email,
         password: data.password,
-        rememberMe: true,
+        rememberMe: data.rememberMe ?? true,
         callbackURL: redirectTo,
       });
 
       if (authError) {
-        // TODO: réactiver quand SMTP configuré
-        // if (authError.code === "EMAIL_NOT_VERIFIED") {
-        //   setEmailNotVerified(data.email);
-        //   return;
-        // }
+        if (authError.code === "EMAIL_NOT_VERIFIED") {
+          setEmailNotVerified(data.email);
+          return;
+        }
         throw new Error(translateAuthError(authError.message));
+      }
+
+      // Une nouvelle session démarre toujours sans organisation active :
+      // on active la première (ou seule) organisation du membre.
+      const { data: organizations } = await authClient.organization.list();
+      if (organizations && organizations.length > 0) {
+        await authClient.organization.setActive({ organizationId: organizations[0].id });
       }
 
       setSuccess("Vous êtes connecté");
@@ -77,34 +55,62 @@ export function useAuthentification() {
     }
   };
 
+  const signinWithGoogle = async (redirectTo = "/dashboard") => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const { error: authError } = await authClient.signIn.social({
+        provider: "google",
+        callbackURL: redirectTo,
+      });
+
+      if (authError) throw new Error(translateAuthError(authError.message));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Connexion Google indisponible pour le moment");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const resendVerificationEmail = async (email: string) => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/auth/resend-verification", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
+      const { error: authError } = await authClient.emailOtp.sendVerificationOtp({
+        email,
+        type: "email-verification",
       });
-
-      const json = await res.json();
-
-      if (!res.ok) {
-        throw new Error(json.error ?? "Impossible de renvoyer l'email. Réessayez dans quelques instants.");
-      }
-
-      setSuccess("Email de vérification renvoyé. Vérifiez votre boîte mail.");
+      if (authError) throw new Error(translateAuthError(authError.message));
+      setSuccess("Code envoyé. Vérifiez votre boîte mail.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Impossible de renvoyer l'email.");
+      setError(err instanceof Error ? err.message : "Impossible d'envoyer le code.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Vérifie le code à 6 chiffres et connecte l'utilisateur (autoSignInAfterVerification).
+  const verifyEmailOtp = async (email: string, otp: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const { data, error: authError } = await authClient.emailOtp.verifyEmail({ email, otp });
+      if (authError) throw new Error(translateAuthError(authError.message));
+      return data;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Code invalide ou expiré");
+      throw err;
     } finally {
       setLoading(false);
     }
   };
 
   return {
-    signup,
     signin,
+    signinWithGoogle,
     resendVerificationEmail,
+    verifyEmailOtp,
     loading,
     emailNotVerified,
     error,

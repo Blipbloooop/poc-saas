@@ -39,3 +39,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# claude code local settings (per-machine permission allowlist)
+.claude/settings.local.json
+
+# fichiers uploadés par les utilisateurs (logos, etc.) — pas du code source
+/public/uploads/

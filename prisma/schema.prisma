@@ -17,6 +17,7 @@ model User {
   email         String    @unique
   emailVerified Boolean   @default(false)
   image         String?
+  phone         String?
   role          UserRole  @default(MEMBER)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -27,6 +28,9 @@ model User {
   chantiers     Chantier[]
   interventions Intervention[]
   documents     Document[]
+
+  members     Member[]
+  invitations Invitation[]
 
   @@index([email])
   @@map("user")
@@ -43,6 +47,9 @@ model Session {
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  activeOrganizationId String?
+
+  @@index([userId])
   @@map("session")
 }
 
@@ -63,6 +70,7 @@ model Account {
   updatedAt             DateTime  @updatedAt
 
   @@unique([providerId, accountId])
+  @@index([userId])
   @@map("account")
 }
 
@@ -127,31 +135,36 @@ enum DocumentCategorie {
 }
 
 model Chantier {
-  id            String         @id @default(cuid())
-  reference     String         @unique
-  nom           String
-  description   String?
-  status        ChantierStatus @default(PROSPECT)
-  adresse       String?
-  ville         String?
-  codePostal    String?
-  budget        Float?
-  dateDebut     DateTime?
-  dateFin       DateTime?
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  deletedAt     DateTime?
+  id          String         @id @default(cuid())
+  reference   String
+  nom         String
+  description String?
+  status      ChantierStatus @default(PROSPECT)
+  adresse     String?
+  ville       String?
+  codePostal  String?
+  budget      Float?
+  dateDebut   DateTime?
+  dateFin     DateTime?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  deletedAt   DateTime?
+
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   responsableId String?
-  responsable   User?          @relation(fields: [responsableId], references: [id])
+  responsable   User?   @relation(fields: [responsableId], references: [id])
 
   devis         Devis[]
   factures      Facture[]
   interventions Intervention[]
   documents     Document[]
 
+  @@unique([organizationId, reference])
   @@index([status])
   @@index([responsableId])
+  @@index([organizationId])
 }
 
 // ─── Prestations (catalogue de services pré-enregistrés) ─────────────────────
@@ -166,6 +179,10 @@ model Prestation {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
   @@map("prestations")
 }
 
@@ -307,4 +324,115 @@ model Document {
   @@index([chantierId])
   @@index([interventionId])
   @@map("documents")
+}
+
+model Organization {
+  id             String          @id
+  name           String
+  slug           String
+  logo           String?
+  createdAt      DateTime
+  metadata       String?
+  members        Member[]
+  invitations    Invitation[]
+  companyProfile CompanyProfile?
+  chantiers      Chantier[]
+  prestations    Prestation[]
+
+  @@unique([slug])
+  @@map("organization")
+}
+
+enum ActiviteBTP {
+  PLOMBERIE
+  ELECTRICITE
+  MENUISERIE
+  MACONNERIE
+  PEINTURE
+  CHAUFFAGE_CLIMATISATION
+  COUVERTURE
+  MULTI_SERVICES
+  AUTRE
+}
+
+enum Effectif {
+  SOLO
+  DE_2_A_5
+  DE_6_A_10
+  DE_11_A_20
+  PLUS_DE_20
+}
+
+// Infos légales et personnalisation de l'entreprise (complète Organization,
+// que Better Auth ne prévoit pas d'étendre avec des champs métier custom)
+model CompanyProfile {
+  id                    String       @id @default(cuid())
+  organizationId        String       @unique
+  organization          Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  activite              ActiviteBTP  @default(AUTRE)
+  activitePrecision     String?
+  effectif              Effectif?
+  siren                 String?
+  siret                 String?
+  adresse               String?
+  codePostal            String?
+  ville                 String?
+  tvaIntracommunautaire String?
+  mentionsLegales       String?      @db.Text
+  brandColor            String?
+  themeSecondaryColor   String?
+  onboardingCompletedAt DateTime?
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+
+  @@map("company_profile")
+}
+
+model Member {
+  id             String       @id
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role           String       @default("member")
+  createdAt      DateTime
+
+  @@index([organizationId])
+  @@index([userId])
+  @@map("member")
+}
+
+model Invitation {
+  id             String       @id
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  email          String
+  role           String?
+  status         String       @default("pending")
+  expiresAt      DateTime
+  createdAt      DateTime     @default(now())
+  inviterId      String
+  user           User         @relation(fields: [inviterId], references: [id], onDelete: Cascade)
+
+  // Pré-renseigné par l'admin qui invite ; repris sur le compte une fois
+  // l'invitation acceptée (le collaborateur ne saisit qu'un mot de passe).
+  prenom    String?
+  nom       String?
+  telephone String?
+
+  @@index([organizationId])
+  @@index([email])
+  @@map("invitation")
+}
+
+// Étape 3 du wizard d'inscription (entreprise + infos légales) mise de côté
+// le temps que l'utilisateur confirme son email — l'organisation et le
+// CompanyProfile ne sont créés qu'une fois l'email vérifié (cf. finishPendingSignup).
+model PendingSignup {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  data      Json
+  createdAt DateTime @default(now())
+
+  @@map("pending_signup")
 }

@@ -6,28 +6,31 @@ import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { FactureStatus } from "@prisma/client";
+import { resolveActiveOrganizationId } from "@/lib/organization";
 
-async function requireSession() {
+async function requireOrganizationId() {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session) throw new Error("Non authentifié");
-  return session;
+  const organizationId = await resolveActiveOrganizationId(session);
+  if (!organizationId) throw new Error("Aucune organisation active");
+  return organizationId;
 }
 
 export type FactureFull = Awaited<ReturnType<typeof getFactureById>>;
 
 export async function getFacturesByChantierId(chantierId: string) {
-  await requireSession();
+  const organizationId = await requireOrganizationId();
   return db.facture.findMany({
-    where: { chantierId },
+    where: { chantierId, chantier: { organizationId } },
     include: { lignes: { orderBy: { ordre: "asc" } } },
     orderBy: { createdAt: "desc" },
   });
 }
 
 export async function getFactureById(id: string) {
-  await requireSession();
-  return db.facture.findUnique({
-    where: { id },
+  const organizationId = await requireOrganizationId();
+  return db.facture.findFirst({
+    where: { id, chantier: { organizationId } },
     include: {
       lignes: { orderBy: { ordre: "asc" } },
       chantier: { select: { id: true, reference: true, nom: true } },
@@ -38,15 +41,18 @@ export async function getFactureById(id: string) {
 
 // Créer une facture depuis un devis signé (copie les lignes)
 export async function createFactureFromDevis(devisId: string) {
-  await requireSession();
+  const organizationId = await requireOrganizationId();
 
-  const devis = await db.devis.findUniqueOrThrow({
-    where: { id: devisId },
+  const devis = await db.devis.findFirst({
+    where: { id: devisId, chantier: { organizationId } },
     include: { lignes: true },
   });
+  if (!devis) throw new Error("Devis introuvable");
 
   const year = new Date().getFullYear();
-  const count = await db.facture.count({ where: { numero: { startsWith: `FAC-${year}-` } } });
+  const count = await db.facture.count({
+    where: { numero: { startsWith: `FAC-${year}-` }, chantier: { organizationId } },
+  });
   const numero = `FAC-${year}-${String(count + 1).padStart(3, "0")}`;
 
   const echeanceDate = new Date();
@@ -80,10 +86,15 @@ export async function createFactureFromDevis(devisId: string) {
 }
 
 export async function createFactureBlank(chantierId: string) {
-  await requireSession();
+  const organizationId = await requireOrganizationId();
+
+  const chantier = await db.chantier.findFirst({ where: { id: chantierId, organizationId } });
+  if (!chantier) throw new Error("Chantier introuvable");
 
   const year = new Date().getFullYear();
-  const count = await db.facture.count({ where: { numero: { startsWith: `FAC-${year}-` } } });
+  const count = await db.facture.count({
+    where: { numero: { startsWith: `FAC-${year}-` }, chantier: { organizationId } },
+  });
   const numero = `FAC-${year}-${String(count + 1).padStart(3, "0")}`;
 
   const facture = await db.facture.create({
@@ -113,7 +124,10 @@ const saveFactureSchema = z.object({
 export type SaveFactureInput = z.infer<typeof saveFactureSchema>;
 
 export async function saveFacture(id: string, input: SaveFactureInput) {
-  await requireSession();
+  const organizationId = await requireOrganizationId();
+  const existing = await db.facture.findFirst({ where: { id, chantier: { organizationId } } });
+  if (!existing) throw new Error("Facture introuvable");
+
   const data = saveFactureSchema.parse(input);
 
   const totalHT = data.lignes.reduce((s, l) => s + l.totalHT, 0);
@@ -152,7 +166,10 @@ export async function saveFacture(id: string, input: SaveFactureInput) {
 }
 
 export async function updateFactureStatus(id: string, status: FactureStatus) {
-  await requireSession();
+  const organizationId = await requireOrganizationId();
+  const existing = await db.facture.findFirst({ where: { id, chantier: { organizationId } } });
+  if (!existing) throw new Error("Facture introuvable");
+
   const f = await db.facture.update({
     where: { id },
     data: {

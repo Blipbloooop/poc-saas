@@ -4,17 +4,26 @@ import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { ChantierStatus } from "@prisma/client";
+import { resolveActiveOrganizationId } from "@/lib/organization";
 
 export async function getDashboardStats() {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session) throw new Error("Non authentifié");
 
+  const organizationId = await resolveActiveOrganizationId(session);
+  if (!organizationId) {
+    return {
+      chantiers: { total: 0, enCours: 0, prospect: 0, termine: 0, annule: 0, enRetard: 0, budgetTotal: 0, budgetEnCours: 0 },
+      usersCount: 0,
+    };
+  }
+
   const [chantiers, usersCount] = await Promise.all([
     db.chantier.findMany({
-      where: { deletedAt: null },
+      where: { organizationId, deletedAt: null },
       select: { status: true, budget: true, dateDebut: true, dateFin: true },
     }),
-    db.user.count({ where: { deletedAt: null } }),
+    db.member.count({ where: { organizationId } }),
   ]);
 
   const now = new Date();

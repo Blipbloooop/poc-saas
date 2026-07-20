@@ -1,7 +1,12 @@
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
-import { emailOTP } from "better-auth/plugins";
-import { sendOTPEmail, sendVerificationLinkEmail, sendNewUserNotification } from "./email-service";
+import { emailOTP, organization } from "better-auth/plugins";
+import { nextCookies } from "better-auth/next-js";
+import {
+  sendOTPEmail,
+  sendNewUserNotification,
+  sendInvitationEmail,
+} from "./email-service";
 import { db } from "./db";
 
 if (!process.env.BETTER_AUTH_SECRET) {
@@ -20,17 +25,15 @@ export const auth = betterAuth({
   emailAndPassword: {
     enabled: true,
     autoSignIn: true,
-    // TODO: réactiver quand SMTP configuré
-    // requireEmailVerification: true,
+    requireEmailVerification: true,
   },
-  // TODO: réactiver quand SMTP configuré
-  // emailVerification: {
-  //   sendOnSignUp: true,
-  //   expiresIn: 60 * 60 * 24,
-  //   sendVerificationEmail: async ({ user, url }) => {
-  //     await sendVerificationLinkEmail({ email: user.email, url, userName: user.name ?? undefined });
-  //   },
-  // },
+  emailVerification: {
+    // Le lien classique est désactivé : la confirmation se fait par code à 6
+    // chiffres (plugin emailOTP ci-dessous, sendVerificationOnSignUp) pour
+    // rester dans le wizard d'inscription sans redirection.
+    sendOnSignUp: false,
+    autoSignInAfterVerification: true,
+  },
   session: {
     cookieCache: {
       enabled: false,
@@ -66,6 +69,7 @@ export const auth = betterAuth({
   },
   plugins: [
     emailOTP({
+      sendVerificationOnSignUp: true,
       async sendVerificationOTP({ email, otp, type }) {
         try {
           await sendOTPEmail({ email, otp, type });
@@ -75,5 +79,21 @@ export const auth = betterAuth({
         }
       },
     }),
+    organization({
+      creatorRole: "admin",
+      async sendInvitationEmail(data) {
+        const url = `${process.env.BETTER_AUTH_URL}/accept-invite/${data.id}`;
+        await sendInvitationEmail({
+          email: data.email,
+          organizationName: data.organization.name,
+          inviterName: data.inviter.user.name,
+          role: data.role,
+          url,
+        });
+      },
+    }),
+    // Doit rester le dernier plugin : propage les Set-Cookie des appels
+    // auth.api.* (ex. setActiveOrganization) exécutés depuis des Server Actions.
+    nextCookies(),
   ],
 });

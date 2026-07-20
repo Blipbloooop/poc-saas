@@ -1,58 +1,40 @@
-import Image from "next/image";
-import { HardHat, FileText, Wrench } from "lucide-react";
+import Link from "next/link";
+import { Logo } from "@/components/shared/Logo";
 
 const HIGHLIGHTS = [
-  { icon: HardHat, text: "Suivi de chantiers en temps réel" },
-  { icon: FileText, text: "Devis & factures générés en un clic" },
-  { icon: Wrench, text: "Interventions planifiées pour vos équipes" },
+  "Devis, factures et signatures électroniques au même endroit",
+  "Suivi de chantier en temps réel, du devis à la facture",
+  "Un tableau de bord adapté à chaque rôle de votre équipe",
 ];
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div
-      className="flex min-h-screen flex-col lg:flex-row"
-      style={{
-        "--primary": "#f1701a",
-        "--primary-dark": "#c85a12",
-        "--primary-light": "#fde7d3",
-        "--secondary": "#0a2149",
-        "--color-primary": "#f1701a",
-        "--color-primary-dark": "#c85a12",
-        "--color-primary-light": "#fde7d3",
-        "--color-primary-foreground": "#ffffff",
-      } as React.CSSProperties}
-    >
-      <div className="relative hidden overflow-hidden bg-secondary lg:flex lg:w-1/2 lg:flex-col lg:justify-between lg:p-12 xl:p-16">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(241,112,26,0.25),transparent_45%)]" />
+    <div className="flex min-h-screen flex-col lg:flex-row">
+      <aside className="hidden shrink-0 flex-col justify-between bg-secondary p-12 text-white lg:flex lg:w-[44%] lg:min-w-[420px] xl:p-14">
+        <Link href="/">
+          <Logo variant="white" iconSize={38} textSize={24} />
+        </Link>
 
-        <Image
-          src="/brand/logo-full.png"
-          alt="NaviBat"
-          width={495}
-          height={365}
-          priority
-          className="relative h-auto w-56 xl:w-64"
-        />
+        <div className="flex max-w-[400px] flex-col gap-7">
+          <h1 className="text-[34px] font-bold leading-[1.25] tracking-[-0.5px]">
+            L&apos;ERP des artisans qui pilote vos chantiers.
+          </h1>
+          <ul className="flex flex-col gap-4 text-[15px] text-[#C6CDE3]">
+            {HIGHLIGHTS.map((text) => (
+              <li key={text} className="flex items-start gap-3">
+                <span className="font-bold text-primary">—</span>
+                {text}
+              </li>
+            ))}
+          </ul>
+        </div>
 
-        <ul className="relative flex flex-col gap-5">
-          {HIGHLIGHTS.map(({ icon: Icon, text }) => (
-            <li key={text} className="flex items-center gap-3 text-white">
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/10 text-primary">
-                <Icon className="h-4.5 w-4.5" />
-              </span>
-              <span className="text-sm font-medium">{text}</span>
-            </li>
-          ))}
-        </ul>
+        <p className="text-[13px] text-sidebar-faint">© 2026 NaviBat — Tous droits réservés</p>
+      </aside>
 
-        <p className="relative text-sm text-slate-400">
-          L&apos;ERP des artisans qui pilote vos chantiers.
-        </p>
-      </div>
-
-      <div className="flex flex-1 items-center justify-center bg-background p-4">
-        <div className="w-full max-w-md">{children}</div>
-      </div>
+      <main className="flex flex-1 items-center justify-center p-8 lg:p-12">
+        <div className="w-full max-w-[400px]">{children}</div>
+      </main>
     </div>
   );
 }

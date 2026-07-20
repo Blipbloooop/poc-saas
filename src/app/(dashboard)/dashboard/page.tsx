@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import {
   TrendingUp, HardHat, Clock, AlertTriangle, LayoutGrid,
   X, Eye, EyeOff, RotateCcw,
@@ -11,6 +12,7 @@ import { type Role } from "@/lib/mock-data";
 import { formatCurrency } from "@/lib/utils";
 import { useTheme } from "@/components/shared/ThemeProvider";
 import CreateChantierModal from "@/components/shared/CreateChantierModal";
+import CreationTypeDialog, { type CreationMode } from "@/components/shared/CreationTypeDialog";
 import { getDashboardStats, type DashboardStats } from "@/server/actions/dashboard";
 import { type ChantierWithResponsable } from "@/server/actions/chantiers";
 
@@ -197,9 +199,11 @@ const ROLES_LIST = [
 ];
 
 export default function DashboardPage() {
+  const router = useRouter();
   const [activeRole, setActiveRole] = useState<Role>("direction");
   const [customizerOpen, setCustomizerOpen] = useState(false);
-  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [showTypeDialog, setShowTypeDialog] = useState(false);
+  const [createMode, setCreateMode] = useState<CreationMode | null>(null);
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const { primaryColor } = useTheme();
   const { isVisible, toggle, reset, widgets, hiddenCount } = useDashboardWidgets(activeRole);
@@ -208,9 +212,16 @@ export default function DashboardPage() {
     getDashboardStats().then(setStats).catch(() => {});
   }, []);
 
-  // Recharge les stats après création d'un chantier
-  const handleChantierCreated = (_: ChantierWithResponsable) => {
-    getDashboardStats().then(setStats).catch(() => {});
+  const handleTypeSelected = (mode: CreationMode) => {
+    setCreateMode(mode);
+    setShowTypeDialog(false);
+  };
+
+  // Redirige vers le détail du chantier créé, onglet devis si mode devis
+  const handleChantierCreated = (chantier: ChantierWithResponsable) => {
+    setCreateMode(null);
+    const tab = createMode === "devis" ? "?tab=devis" : "";
+    router.push(`/chantiers/${chantier.id}${tab}`);
   };
 
   return (
@@ -249,7 +260,7 @@ export default function DashboardPage() {
       <DashboardView
         isVisible={isVisible}
         stats={stats}
-        onCreateChantier={() => setCreateModalOpen(true)}
+        onCreateChantier={() => setShowTypeDialog(true)}
       />
 
       {customizerOpen && (
@@ -262,9 +273,13 @@ export default function DashboardPage() {
         />
       )}
 
-      {createModalOpen && (
+      {showTypeDialog && (
+        <CreationTypeDialog onSelect={handleTypeSelected} onClose={() => setShowTypeDialog(false)} />
+      )}
+
+      {createMode && (
         <CreateChantierModal
-          onClose={() => setCreateModalOpen(false)}
+          onClose={() => setCreateMode(null)}
           onCreated={handleChantierCreated}
         />
       )}

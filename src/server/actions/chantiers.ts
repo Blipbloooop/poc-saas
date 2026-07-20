@@ -6,28 +6,31 @@ import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { ChantierStatus } from "@prisma/client";
+import { resolveActiveOrganizationId } from "@/lib/organization";
 
 export type ChantierWithResponsable = Awaited<ReturnType<typeof getChantiers>>[number];
 
-async function requireSession() {
+async function requireOrganizationId() {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session) throw new Error("Non authentifié");
-  return session;
+  const organizationId = await resolveActiveOrganizationId(session);
+  if (!organizationId) throw new Error("Aucune organisation active");
+  return organizationId;
 }
 
 export async function getChantierById(id: string) {
-  await requireSession();
+  const organizationId = await requireOrganizationId();
   return db.chantier.findFirst({
-    where: { id, deletedAt: null },
+    where: { id, organizationId, deletedAt: null },
     include: { responsable: { select: { id: true, name: true } } },
   });
 }
 
 export async function getChantiers() {
-  await requireSession();
+  const organizationId = await requireOrganizationId();
 
   return db.chantier.findMany({
-    where: { deletedAt: null },
+    where: { organizationId, deletedAt: null },
     include: { responsable: { select: { id: true, name: true } } },
     orderBy: { createdAt: "desc" },
   });
@@ -49,7 +52,7 @@ const createChantierSchema = z.object({
 export type CreateChantierInput = z.infer<typeof createChantierSchema>;
 
 export async function createChantier(input: CreateChantierInput) {
-  await requireSession();
+  const organizationId = await requireOrganizationId();
 
   const parsed = createChantierSchema.safeParse(input);
   if (!parsed.success) {
@@ -58,14 +61,17 @@ export async function createChantier(input: CreateChantierInput) {
 
   const { dateDebut, dateFin, ...rest } = parsed.data;
 
-  // Génère une référence unique : CH-YYYY-NNN
+  // Génère une référence unique par organisation : CH-YYYY-NNN
   const year = new Date().getFullYear();
-  const count = await db.chantier.count({ where: { reference: { startsWith: `CH-${year}-` } } });
+  const count = await db.chantier.count({
+    where: { organizationId, reference: { startsWith: `CH-${year}-` } },
+  });
   const reference = `CH-${year}-${String(count + 1).padStart(3, "0")}`;
 
   const chantier = await db.chantier.create({
     data: {
       ...rest,
+      organizationId,
       reference,
       dateDebut: dateDebut ? new Date(dateDebut) : undefined,
       dateFin: dateFin ? new Date(dateFin) : undefined,
@@ -80,7 +86,10 @@ export async function createChantier(input: CreateChantierInput) {
 }
 
 export async function deleteChantier(id: string) {
-  await requireSession();
+  const organizationId = await requireOrganizationId();
+
+  const chantier = await db.chantier.findFirst({ where: { id, organizationId } });
+  if (!chantier) throw new Error("Chantier introuvable");
 
   await db.chantier.update({
     where: { id },

@@ -6,14 +6,12 @@ const PUBLIC_PATHS = new Set([
   "/signin",
   "/signup",
   "/forgot-password",
-  "/confirm-email",
-  "/email-verified",
 ]);
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const session = getSessionCookie(request);
-  const isPublic = PUBLIC_PATHS.has(pathname);
+  const isPublic = PUBLIC_PATHS.has(pathname) || pathname.startsWith("/accept-invite/");
 
   // Pas de session → redirige vers /signin (sauf pages publiques et API)
   if (!session && !isPublic) {

@@ -21,6 +21,14 @@ const ERROR_MAP: Record<string, string> = {
   "Too many requests": "Trop de tentatives, réessayez plus tard",
   "Rate limit exceeded": "Trop de tentatives, réessayez plus tard",
   "Invalid OTP": "Code invalide",
+  "OTP expired": "Code expiré, demandez-en un nouveau",
+  "Too many attempts": "Trop de tentatives, demandez un nouveau code",
+  "User is already a member of this organization": "Cette personne fait déjà partie de votre organisation",
+  "You are not allowed to invite users to this organization": "Vous n'êtes pas autorisé à inviter des collaborateurs",
+  "User is already invited to this organization": "Une invitation est déjà en attente pour cet email",
+  "You are not allowed to invite a user with this role": "Vous n'êtes pas autorisé à inviter avec ce rôle",
+  "Organization membership limit reached": "Limite de membres de l'organisation atteinte",
+  "Invitation limit reached": "Limite d'invitations atteinte",
 };
 
 export function translateAuthError(message: string | undefined): string {

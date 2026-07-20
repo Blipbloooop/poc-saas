@@ -7,11 +7,14 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { DevisStatus } from "@prisma/client";
 import { randomUUID } from "crypto";
+import { resolveActiveOrganizationId } from "@/lib/organization";
 
-async function requireSession() {
+async function requireOrganizationId() {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session) throw new Error("Non authentifié");
-  return session;
+  const organizationId = await resolveActiveOrganizationId(session);
+  if (!organizationId) throw new Error("Aucune organisation active");
+  return organizationId;
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -22,18 +25,18 @@ export type DevisFull = Awaited<ReturnType<typeof getDevisById>>;
 // ─── Lecture ──────────────────────────────────────────────────────────────────
 
 export async function getDevisByChantierId(chantierId: string) {
-  await requireSession();
+  const organizationId = await requireOrganizationId();
   return db.devis.findMany({
-    where: { chantierId },
+    where: { chantierId, chantier: { organizationId } },
     include: { lignes: { orderBy: { ordre: "asc" } } },
     orderBy: { createdAt: "desc" },
   });
 }
 
 export async function getDevisById(id: string) {
-  await requireSession();
-  return db.devis.findUnique({
-    where: { id },
+  const organizationId = await requireOrganizationId();
+  return db.devis.findFirst({
+    where: { id, chantier: { organizationId } },
     include: {
       lignes: { orderBy: { ordre: "asc" } },
       chantier: { select: { id: true, reference: true, nom: true, adresse: true, ville: true } },
@@ -51,10 +54,15 @@ async function getDevis(id: string) {
 // ─── Création ─────────────────────────────────────────────────────────────────
 
 export async function createDevis(chantierId: string, clientNom?: string) {
-  await requireSession();
+  const organizationId = await requireOrganizationId();
+
+  const chantier = await db.chantier.findFirst({ where: { id: chantierId, organizationId } });
+  if (!chantier) throw new Error("Chantier introuvable");
 
   const year = new Date().getFullYear();
-  const count = await db.devis.count({ where: { numero: { startsWith: `DEV-${year}-` } } });
+  const count = await db.devis.count({
+    where: { numero: { startsWith: `DEV-${year}-` }, chantier: { organizationId } },
+  });
   const numero = `DEV-${year}-${String(count + 1).padStart(3, "0")}`;
 
   const devis = await db.devis.create({
@@ -94,7 +102,10 @@ const saveDevisSchema = z.object({
 export type SaveDevisInput = z.infer<typeof saveDevisSchema>;
 
 export async function saveDevis(id: string, input: SaveDevisInput) {
-  await requireSession();
+  const organizationId = await requireOrganizationId();
+  const existing = await db.devis.findFirst({ where: { id, chantier: { organizationId } } });
+  if (!existing) throw new Error("Devis introuvable");
+
   const data = saveDevisSchema.parse(input);
 
   // Calcul des totaux
@@ -140,7 +151,9 @@ export async function saveDevis(id: string, input: SaveDevisInput) {
 // ─── Envoi pour signature ─────────────────────────────────────────────────────
 
 export async function sendDevisForSignature(id: string) {
-  await requireSession();
+  const organizationId = await requireOrganizationId();
+  const existing = await db.devis.findFirst({ where: { id, chantier: { organizationId } } });
+  if (!existing) throw new Error("Devis introuvable");
 
   const token = randomUUID();
   const devis = await db.devis.update({
@@ -157,7 +170,7 @@ export async function sendDevisForSignature(id: string) {
   };
 }
 
-// ─── Signature (appelé depuis page publique) ──────────────────────────────────
+// ─── Signature (appelé depuis page publique, pas de session — le token fait office d'accès) ──
 
 export async function signDevis(token: string) {
   const devis = await db.devis.findUnique({ where: { signatureToken: token } });
@@ -183,8 +196,10 @@ export async function getDevisByToken(token: string) {
 }
 
 export async function deleteDevis(id: string) {
-  await requireSession();
-  const devis = await db.devis.findUniqueOrThrow({ where: { id } });
+  const organizationId = await requireOrganizationId();
+  const devis = await db.devis.findFirst({ where: { id, chantier: { organizationId } } });
+  if (!devis) throw new Error("Devis introuvable");
+
   await db.devis.delete({ where: { id } });
   revalidatePath(`/chantiers/${devis.chantierId}`);
   return { success: true as const };

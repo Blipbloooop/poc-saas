@@ -6,19 +6,22 @@ import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { InterventionStatus } from "@prisma/client";
+import { resolveActiveOrganizationId } from "@/lib/organization";
 
-async function requireSession() {
+async function requireOrganizationId() {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session) throw new Error("Non authentifié");
-  return session;
+  const organizationId = await resolveActiveOrganizationId(session);
+  if (!organizationId) throw new Error("Aucune organisation active");
+  return organizationId;
 }
 
 export type InterventionFull = Awaited<ReturnType<typeof getInterventionsByChantierId>>[number];
 
 export async function getInterventionsByChantierId(chantierId: string) {
-  await requireSession();
+  const organizationId = await requireOrganizationId();
   return db.intervention.findMany({
-    where: { chantierId },
+    where: { chantierId, chantier: { organizationId } },
     include: {
       user: { select: { id: true, name: true } },
       documents: { include: { uploadedBy: { select: { id: true, name: true } } }, orderBy: { createdAt: "desc" } },
@@ -40,7 +43,11 @@ const schema = z.object({
 export type CreateInterventionInput = z.infer<typeof schema>;
 
 export async function createIntervention(chantierId: string, input: CreateInterventionInput) {
-  await requireSession();
+  const organizationId = await requireOrganizationId();
+
+  const chantier = await db.chantier.findFirst({ where: { id: chantierId, organizationId } });
+  if (!chantier) throw new Error("Chantier introuvable");
+
   const data = schema.parse(input);
 
   const intervention = await db.intervention.create({
@@ -65,15 +72,20 @@ export async function createIntervention(chantierId: string, input: CreateInterv
 }
 
 export async function updateInterventionStatus(id: string, status: InterventionStatus) {
-  await requireSession();
+  const organizationId = await requireOrganizationId();
+  const existing = await db.intervention.findFirst({ where: { id, chantier: { organizationId } } });
+  if (!existing) throw new Error("Intervention introuvable");
+
   const i = await db.intervention.update({ where: { id }, data: { status } });
   revalidatePath(`/chantiers/${i.chantierId}`);
   return { success: true as const };
 }
 
 export async function deleteIntervention(id: string) {
-  await requireSession();
-  const i = await db.intervention.findUniqueOrThrow({ where: { id } });
+  const organizationId = await requireOrganizationId();
+  const i = await db.intervention.findFirst({ where: { id, chantier: { organizationId } } });
+  if (!i) throw new Error("Intervention introuvable");
+
   await db.intervention.delete({ where: { id } });
   revalidatePath(`/chantiers/${i.chantierId}`);
   return { success: true as const };

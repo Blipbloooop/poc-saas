@@ -8,9 +8,9 @@ import { useTheme } from "@/components/shared/ThemeProvider";
 import { cn } from "@/lib/utils";
 
 const ROLE_LABELS: Record<string, string> = {
-  ADMIN: "Administrateur",
-  MEMBER: "Membre",
-  VIEWER: "Lecteur",
+  admin: "Administrateur",
+  member: "Membre",
+  owner: "Propriétaire",
 };
 
 function getInitials(name: string): string {
@@ -102,8 +102,8 @@ export default function CollaborateursPage() {
       <div className="grid grid-cols-3 gap-4 mb-6">
         {[
           { label: "Total", value: users.length, color: "bg-slate-50" },
-          { label: "Admins", value: users.filter((u) => u.role === "ADMIN").length, color: "bg-blue-50" },
-          { label: "Membres", value: users.filter((u) => u.role === "MEMBER").length, color: "bg-green-50" },
+          { label: "Admins", value: users.filter((u) => u.role === "admin" || u.role === "owner").length, color: "bg-blue-50" },
+          { label: "Membres", value: users.filter((u) => u.role === "member").length, color: "bg-green-50" },
         ].map((s) => (
           <div key={s.label} className={`rounded-xl p-4 ${s.color}`}>
             <p className="text-xs text-slate-500 font-medium">{s.label}</p>
