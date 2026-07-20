@@ -9,6 +9,15 @@ const LOGO_MAX_SIZE = 2 * 1024 * 1024; // 2 Mo
 const LOGO_MIME_WHITELIST = ["image/png", "image/jpeg", "image/webp", "image/svg+xml"];
 
 export async function POST(req: NextRequest) {
+  // TODO(diag): retirer une fois le souci "This store does not exist" résolu.
+  const diagToken = process.env.BLOB_READ_WRITE_TOKEN ?? "";
+  console.log("[upload:diag]", {
+    tokenLength: diagToken.length,
+    tokenPrefix: diagToken.slice(0, 20),
+    storeIdFromToken: `store_${diagToken.split("_")[3] ?? ""}`,
+    envStoreId: process.env.BLOB_STORE_ID ?? null,
+  });
+
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session) return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
 
